@@ -13,6 +13,8 @@ A fully offline, client-side Markdown & mini-repo renderer. Open the HTML file (
 - Renders ` ```mermaid ` code blocks as live diagrams (flowcharts, sequence diagrams, state diagrams, etc.).
 - Unzips a `.zip` in-browser and shows it as a browsable file tree — click through folders and files like a lightweight repo viewer, with relative image/video paths resolved correctly.
 - Dark, light, and eye-saver (paper) themes, with a responsive layout that works on both desktop and phone screens.
+- **Read Aloud (local TTS)** — reads the currently open file out loud using your browser/OS's own built-in voices (e.g. Chrome/Windows voices), with a voice picker and a speed control (0.5×–2×). Fully local — no audio or text is sent anywhere.
+  - **Note:** Android browsers don't reliably support local text-to-speech through the web. If you open Read Aloud on Android, you'll get a popup telling you to use the desktop version of a browser (Chrome, Edge, Safari on Windows/Mac/Linux) or try a different browser that supports it.
 
 ## Why Markdown
 
