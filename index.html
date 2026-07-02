@@ -90,6 +90,25 @@
 
   .hamburger{ display:none; }
 
+  .tts-panel{
+    display:none; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:9px 16px; background:var(--bg-panel); border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); z-index:19;
+  }
+  .tts-panel.open{ display:flex; }
+  .tts-panel .tts-label small{ display:block; font-size:9.5px; color:var(--ink-dim); font-weight:400; margin-top:1px; }
+  .tts-select{
+    background:var(--bg-raised); color:var(--ink); border:1px solid var(--line); border-radius:5px;
+    padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:12px; max-width:220px;
+  }
+  .tts-speed-wrap{ display:flex; align-items:center; gap:8px; }
+  .tts-speed-wrap input[type=range]{ accent-color:var(--accent); width:110px; }
+  .tts-status{ color:var(--accent-2); font-size:11px; }
+  @media (max-width: 860px){
+    .tts-panel{ gap:8px 12px; }
+    .tts-label small{ display:none; }
+  }
+
   /* ---------- Body: sidebar + main ---------- */
   .body-wrap{ flex:1; display:flex; min-height:0; position:relative; }
 
@@ -227,12 +246,26 @@
     <button class="btn" id="uploadZipBtn"><span>🗂</span><span class="label">Zip / Repo</span></button>
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.svg,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.ogg" multiple>
     <input type="file" id="folderZipInput" accept=".zip">
+    <button class="btn icon" id="ttsToggleBtn" title="Read aloud (local TTS)"><span>🔊</span><span class="label">Read Aloud</span></button>
     <div class="theme-toggle" id="themeToggle">
       <button data-theme="dark" title="Dark">◐</button>
       <button data-theme="light" title="Light">○</button>
       <button data-theme="paper" title="Eye-saver">●</button>
     </div>
   </header>
+
+  <div class="tts-panel" id="ttsPanel">
+    <span class="tts-label">🔊 Local TTS <small>(your browser's built-in voices — nothing leaves your device)</small></span>
+    <select id="ttsVoiceSelect" class="tts-select"></select>
+    <label class="tts-speed-wrap">
+      Speed <span id="ttsSpeedVal">1.0×</span>
+      <input type="range" id="ttsSpeedRange" min="0.5" max="2" step="0.1" value="1">
+    </label>
+    <button class="btn icon" id="ttsPlayBtn" title="Play"><span>▶</span></button>
+    <button class="btn icon" id="ttsPauseBtn" title="Pause"><span>⏸</span></button>
+    <button class="btn icon" id="ttsStopBtn" title="Stop"><span>⏹</span></button>
+    <span class="tts-status" id="ttsStatus"></span>
+  </div>
 
   <div class="body-wrap">
     <div class="overlay-bg" id="overlayBg"></div>
@@ -638,6 +671,115 @@
       showPlainText(text, path, guessLang(ext));
     }
   }
+
+  // ---------------- Local Text-to-Speech (Web Speech API — fully on-device) ----------------
+  const ttsToggleBtn = document.getElementById('ttsToggleBtn');
+  const ttsPanel = document.getElementById('ttsPanel');
+  const ttsVoiceSelect = document.getElementById('ttsVoiceSelect');
+  const ttsSpeedRange = document.getElementById('ttsSpeedRange');
+  const ttsSpeedVal = document.getElementById('ttsSpeedVal');
+  const ttsPlayBtn = document.getElementById('ttsPlayBtn');
+  const ttsPauseBtn = document.getElementById('ttsPauseBtn');
+  const ttsStopBtn = document.getElementById('ttsStopBtn');
+  const ttsStatus = document.getElementById('ttsStatus');
+
+  const synth = window.speechSynthesis || null;
+  let ttsQueue = [];
+  let ttsQueueIdx = 0;
+  let ttsSpeaking = false;
+
+  function populateVoices(){
+    if(!synth) return;
+    const voices = synth.getVoices();
+    if(!voices.length) return;
+    ttsVoiceSelect.innerHTML = '';
+    voices.forEach((v,i)=>{
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${v.name} (${v.lang})${v.default ? ' — default' : ''}`;
+      ttsVoiceSelect.appendChild(opt);
+    });
+  }
+  if(synth){
+    populateVoices();
+    synth.onvoiceschanged = populateVoices;
+  } else {
+    ttsToggleBtn.disabled = true;
+    ttsToggleBtn.title = 'Speech synthesis is not supported in this browser';
+  }
+
+  ttsToggleBtn.addEventListener('click', ()=>{
+    ttsPanel.classList.toggle('open');
+  });
+
+  ttsSpeedRange.addEventListener('input', ()=>{
+    ttsSpeedVal.textContent = parseFloat(ttsSpeedRange.value).toFixed(1) + '×';
+  });
+
+  function getReadableText(){
+    const pad = mainView.querySelector('.content-pad');
+    if(!pad) return '';
+    return pad.innerText || pad.textContent || '';
+  }
+
+  // split into sentence-ish chunks so the engine doesn't choke on very long text
+  function chunkText(text){
+    const clean = text.replace(/\s+/g,' ').trim();
+    if(!clean) return [];
+    const parts = clean.match(/[^.!?\n]+[.!?\n]*/g) || [clean];
+    const chunks = [];
+    let buf = '';
+    parts.forEach(p=>{
+      if((buf + p).length > 220){
+        if(buf) chunks.push(buf.trim());
+        buf = p;
+      } else {
+        buf += p;
+      }
+    });
+    if(buf.trim()) chunks.push(buf.trim());
+    return chunks;
+  }
+
+  function speakNextChunk(){
+    if(ttsQueueIdx >= ttsQueue.length){
+      ttsSpeaking = false;
+      ttsStatus.textContent = 'Finished';
+      return;
+    }
+    const voices = synth.getVoices();
+    const chosen = voices[parseInt(ttsVoiceSelect.value || 0, 10)];
+    const utter = new SpeechSynthesisUtterance(ttsQueue[ttsQueueIdx]);
+    if(chosen) utter.voice = chosen;
+    utter.rate = parseFloat(ttsSpeedRange.value || '1');
+    utter.onend = ()=>{ ttsQueueIdx++; speakNextChunk(); };
+    utter.onerror = ()=>{ ttsQueueIdx++; speakNextChunk(); };
+    ttsStatus.textContent = `Reading… (${ttsQueueIdx+1}/${ttsQueue.length})`;
+    synth.speak(utter);
+  }
+
+  ttsPlayBtn.addEventListener('click', ()=>{
+    if(!synth) return;
+    if(synth.paused && ttsSpeaking){ synth.resume(); ttsStatus.textContent = 'Reading…'; return; }
+    const text = getReadableText();
+    if(!text){ ttsStatus.textContent = 'Nothing to read yet'; return; }
+    synth.cancel();
+    ttsQueue = chunkText(text);
+    ttsQueueIdx = 0;
+    ttsSpeaking = true;
+    speakNextChunk();
+  });
+  ttsPauseBtn.addEventListener('click', ()=>{
+    if(!synth) return;
+    if(synth.speaking && !synth.paused) synth.pause();
+  });
+  ttsStopBtn.addEventListener('click', ()=>{
+    if(!synth) return;
+    synth.cancel();
+    ttsSpeaking = false;
+    ttsQueue = []; ttsQueueIdx = 0;
+    ttsStatus.textContent = 'Stopped';
+  });
 
 })();
 </script>
