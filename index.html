@@ -202,6 +202,19 @@
     padding:14px; border-top:1px solid var(--line); background:var(--bg-raised); flex:0 0 auto;
   }
 
+  .modal-overlay{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:100;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal-box{
+    background:var(--bg-raised); border:1px solid var(--line); border-radius:10px;
+    max-width:420px; padding:22px 24px; box-shadow:0 12px 40px rgba(0,0,0,.4);
+  }
+  .modal-box h3{ margin:0 0 12px; font-family:'IBM Plex Mono',monospace; font-size:16px; color:var(--ink); }
+  .modal-box p{ margin:0 0 12px; font-size:13px; color:var(--ink-dim); line-height:1.55; }
+  .modal-box .btn{ margin-top:4px; }
+
   /* ---------- Scrollbars ---------- */
   ::-webkit-scrollbar{ width:10px; height:10px; }
   ::-webkit-scrollbar-track{ background:transparent; }
@@ -265,6 +278,15 @@
     <button class="btn icon" id="ttsPauseBtn" title="Pause"><span>⏸</span></button>
     <button class="btn icon" id="ttsStopBtn" title="Stop"><span>⏹</span></button>
     <span class="tts-status" id="ttsStatus"></span>
+  </div>
+
+  <div class="modal-overlay" id="androidTtsModal">
+    <div class="modal-box">
+      <h3>🔊 Read Aloud not available here</h3>
+      <p>Local text-to-speech isn't reliably supported in Android browsers (voices are often missing or silent, even though the button is clickable).</p>
+      <p>To use Read Aloud, open this page in a <strong>desktop browser</strong> (Chrome, Edge, or Safari on Windows/Mac/Linux), or try a different mobile browser that supports the Web Speech API.</p>
+      <button class="btn primary" id="androidTtsModalClose">Got it</button>
+    </div>
   </div>
 
   <div class="body-wrap">
@@ -708,7 +730,19 @@
     ttsToggleBtn.title = 'Speech synthesis is not supported in this browser';
   }
 
+  const androidTtsModal = document.getElementById('androidTtsModal');
+  const androidTtsModalClose = document.getElementById('androidTtsModalClose');
+  function isAndroidBrowser(){
+    return /Android/i.test(navigator.userAgent || navigator.vendor || '');
+  }
+  androidTtsModalClose.addEventListener('click', ()=> androidTtsModal.classList.remove('show'));
+  androidTtsModal.addEventListener('click', e=>{ if(e.target===androidTtsModal) androidTtsModal.classList.remove('show'); });
+
   ttsToggleBtn.addEventListener('click', ()=>{
+    if(isAndroidBrowser()){
+      androidTtsModal.classList.add('show');
+      return;
+    }
     ttsPanel.classList.toggle('open');
   });
 
