@@ -15,6 +15,7 @@ A fully offline, client-side Markdown & mini-repo renderer. Open the HTML file (
 - Dark, light, and eye-saver (paper) themes, with a responsive layout that works on both desktop and phone screens.
 - **Read Aloud (local TTS)** — reads the currently open file out loud using your browser/OS's own built-in voices (e.g. Chrome/Windows voices), with a voice picker and a speed control (0.5×–2×). Fully local — no audio or text is sent anywhere.
   - **Note:** Android browsers don't reliably support local text-to-speech through the web. If you open Read Aloud on Android, you'll get a popup telling you to use the desktop version of a browser (Chrome, Edge, Safari on Windows/Mac/Linux) or try a different browser that supports it.
+- **Create / Edit markdown** — write a new `.md` file from scratch or edit the one you currently have open, in a split editor with a live preview and a formatting toolbar (bold, headings, links, images, lists, tables, code blocks, diagram blocks). Download the result as a `.md` file when you're done — nothing is saved or sent anywhere until you choose to download it.
 
 ## Why Markdown
 
