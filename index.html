@@ -215,6 +215,42 @@
   .modal-box p{ margin:0 0 12px; font-size:13px; color:var(--ink-dim); line-height:1.55; }
   .modal-box .btn{ margin-top:4px; }
 
+  .editor-overlay{
+    display:none; position:fixed; inset:0; background:var(--bg); z-index:90;
+    flex-direction:column;
+  }
+  .editor-overlay.show{ display:flex; }
+  .editor-box{ display:flex; flex-direction:column; height:100%; }
+  .editor-topbar{
+    display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg-raised);
+    border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .editor-filename{
+    background:transparent; border:1px solid var(--line); border-radius:5px; color:var(--ink);
+    font-family:'IBM Plex Mono',monospace; font-size:13px; padding:7px 10px; width:220px;
+  }
+  .editor-toolbar{
+    display:flex; gap:4px; flex-wrap:wrap; padding:8px 14px; background:var(--bg-panel);
+    border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .editor-toolbar button{
+    background:var(--bg-raised); border:1px solid var(--line); color:var(--ink); border-radius:5px;
+    padding:6px 10px; font-family:'IBM Plex Mono',monospace; font-size:12px; cursor:pointer;
+  }
+  .editor-toolbar button:hover{ border-color:var(--accent); color:var(--accent); }
+  .editor-split{ flex:1; display:flex; min-height:0; }
+  .editor-textarea{
+    flex:1 1 50%; border:none; border-right:1px solid var(--line); background:var(--code-bg); color:var(--ink);
+    font-family:'IBM Plex Mono',monospace; font-size:13.5px; line-height:1.6; padding:18px; resize:none; outline:none;
+  }
+  .editor-preview{ flex:1 1 50%; overflow-y:auto; margin:0; max-width:none; padding:24px 30px; }
+  @media (max-width: 860px){
+    .editor-split{ flex-direction:column; }
+    .editor-textarea{ border-right:none; border-bottom:1px solid var(--line); flex:1 1 50%; }
+    .editor-preview{ flex:1 1 50%; padding:16px 18px; }
+    .editor-filename{ width:140px; }
+  }
+
   /* ---------- Scrollbars ---------- */
   ::-webkit-scrollbar{ width:10px; height:10px; }
   ::-webkit-scrollbar-track{ background:transparent; }
@@ -259,6 +295,8 @@
     <button class="btn" id="uploadZipBtn"><span>🗂</span><span class="label">Zip / Repo</span></button>
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.svg,.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.ogg" multiple>
     <input type="file" id="folderZipInput" accept=".zip">
+    <button class="btn" id="newMdBtn" title="Create a new markdown file"><span>➕</span><span class="label">New</span></button>
+    <button class="btn" id="editMdBtn" title="Edit the currently open markdown file"><span>✎</span><span class="label">Edit</span></button>
     <button class="btn icon" id="ttsToggleBtn" title="Read aloud (local TTS)"><span>🔊</span><span class="label">Read Aloud</span></button>
     <div class="theme-toggle" id="themeToggle">
       <button data-theme="dark" title="Dark">◐</button>
@@ -286,6 +324,37 @@
       <p>Local text-to-speech isn't reliably supported in Android browsers (voices are often missing or silent, even though the button is clickable).</p>
       <p>To use Read Aloud, open this page in a <strong>desktop browser</strong> (Chrome, Edge, or Safari on Windows/Mac/Linux), or try a different mobile browser that supports the Web Speech API.</p>
       <button class="btn primary" id="androidTtsModalClose">Got it</button>
+    </div>
+  </div>
+
+  <div class="editor-overlay" id="editorOverlay">
+    <div class="editor-box">
+      <div class="editor-topbar">
+        <input type="text" id="editorFilename" class="editor-filename" value="untitled.md" spellcheck="false">
+        <div class="spacer"></div>
+        <button class="btn" id="editorDownloadBtn"><span>⬇</span><span class="label">Download .md</span></button>
+        <button class="btn icon" id="editorCloseBtn" title="Close editor"><span>✕</span></button>
+      </div>
+      <div class="editor-toolbar" id="editorToolbar">
+        <button data-act="bold" title="Bold"><b>B</b></button>
+        <button data-act="italic" title="Italic"><i>I</i></button>
+        <button data-act="h1" title="Heading">H1</button>
+        <button data-act="h2" title="Heading">H2</button>
+        <button data-act="quote" title="Quote">❝</button>
+        <button data-act="code" title="Inline code">&lt;/&gt;</button>
+        <button data-act="codeblock" title="Code block">{ }</button>
+        <button data-act="link" title="Link">🔗</button>
+        <button data-act="image" title="Image">🖼</button>
+        <button data-act="ul" title="Bullet list">•—</button>
+        <button data-act="ol" title="Numbered list">1.—</button>
+        <button data-act="table" title="Table">▦</button>
+        <button data-act="hr" title="Divider">―</button>
+        <button data-act="mermaid" title="Diagram block">◈</button>
+      </div>
+      <div class="editor-split">
+        <textarea id="editorTextarea" class="editor-textarea" placeholder="# Start writing…" spellcheck="false"></textarea>
+        <div id="editorPreview" class="content-pad md editor-preview"></div>
+      </div>
     </div>
   </div>
 
@@ -423,6 +492,8 @@
   }
 
   let currentRenderFn = null;
+  let lastMdSource = null;
+  let lastMdName = 'untitled.md';
 
   function showMarkdown(mdText, resolver){
     emptyState.style.display = 'none';
@@ -492,7 +563,11 @@
 
     if(ext==='md' || ext==='markdown' || ext==='txt'){
       const reader = new FileReader();
-      reader.onload = ()=> showMarkdown(reader.result, null);
+      reader.onload = ()=>{
+        lastMdSource = reader.result;
+        lastMdName = first.name;
+        showMarkdown(reader.result, null);
+      };
       reader.readAsText(first);
     } else if(['png','jpg','jpeg','gif','webp'].includes(ext)){
       showMedia(url,'image', first.name);
@@ -676,6 +751,8 @@
 
     if(ext==='md' || ext==='markdown'){
       const text = await textFor(path);
+      lastMdSource = text;
+      lastMdName = path.includes('/') ? path.slice(path.lastIndexOf('/')+1) : path;
       await preloadMediaBlobUrls(path, text);
       showMarkdown(text, makeResolver(path));
       currentRenderFn = async ()=>{ showMarkdown(text, makeResolver(path)); };
@@ -813,6 +890,114 @@
     ttsSpeaking = false;
     ttsQueue = []; ttsQueueIdx = 0;
     ttsStatus.textContent = 'Stopped';
+  });
+
+  // ---------------- Markdown editor (create / edit) ----------------
+  const newMdBtn = document.getElementById('newMdBtn');
+  const editMdBtn = document.getElementById('editMdBtn');
+  const editorOverlay = document.getElementById('editorOverlay');
+  const editorFilename = document.getElementById('editorFilename');
+  const editorTextarea = document.getElementById('editorTextarea');
+  const editorPreview = document.getElementById('editorPreview');
+  const editorToolbar = document.getElementById('editorToolbar');
+  const editorDownloadBtn = document.getElementById('editorDownloadBtn');
+  const editorCloseBtn = document.getElementById('editorCloseBtn');
+
+  function openEditor(text, name){
+    editorTextarea.value = text || '';
+    editorFilename.value = name || 'untitled.md';
+    renderEditorPreview();
+    editorOverlay.classList.add('show');
+    editorTextarea.focus();
+  }
+  function closeEditor(){ editorOverlay.classList.remove('show'); }
+
+  function renderEditorPreview(){
+    editorPreview.innerHTML = renderMarkdownHTML(editorTextarea.value);
+    highlightAndDiagram(editorPreview);
+  }
+
+  let editorDebounce = null;
+  editorTextarea.addEventListener('input', ()=>{
+    clearTimeout(editorDebounce);
+    editorDebounce = setTimeout(renderEditorPreview, 180);
+  });
+
+  newMdBtn.addEventListener('click', ()=> openEditor('# Untitled\n\nStart writing your markdown here…\n', 'untitled.md'));
+  editMdBtn.addEventListener('click', ()=>{
+    if(lastMdSource===null){
+      openEditor('# Untitled\n\nStart writing your markdown here…\n', 'untitled.md');
+    } else {
+      openEditor(lastMdSource, lastMdName);
+    }
+  });
+  editorCloseBtn.addEventListener('click', closeEditor);
+
+  editorDownloadBtn.addEventListener('click', ()=>{
+    let name = editorFilename.value.trim() || 'untitled.md';
+    if(!/\.(md|markdown)$/i.test(name)) name += '.md';
+    const blob = new Blob([editorTextarea.value], { type:'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  });
+
+  // toolbar: wraps/inserts markdown syntax around the current selection
+  function wrapSelection(before, after, placeholder){
+    after = after===undefined ? before : after;
+    const start = editorTextarea.selectionStart, end = editorTextarea.selectionEnd;
+    const val = editorTextarea.value;
+    const selected = val.slice(start, end) || placeholder || '';
+    const newVal = val.slice(0,start) + before + selected + after + val.slice(end);
+    editorTextarea.value = newVal;
+    const cursor = start + before.length + selected.length + after.length;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(cursor, cursor);
+    renderEditorPreview();
+  }
+  function insertLinePrefix(prefix){
+    const start = editorTextarea.selectionStart;
+    const val = editorTextarea.value;
+    const lineStart = val.lastIndexOf('\n', start-1) + 1;
+    const newVal = val.slice(0,lineStart) + prefix + val.slice(lineStart);
+    editorTextarea.value = newVal;
+    const cursor = start + prefix.length;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(cursor, cursor);
+    renderEditorPreview();
+  }
+  function insertBlock(text){
+    const start = editorTextarea.selectionStart, end = editorTextarea.selectionEnd;
+    const val = editorTextarea.value;
+    const needsNL = start>0 && val[start-1] !== '\n';
+    const insert = (needsNL ? '\n' : '') + text;
+    editorTextarea.value = val.slice(0,start) + insert + val.slice(end);
+    const cursor = start + insert.length;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(cursor, cursor);
+    renderEditorPreview();
+  }
+
+  editorToolbar.addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    switch(btn.dataset.act){
+      case 'bold': wrapSelection('**','**','bold text'); break;
+      case 'italic': wrapSelection('*','*','italic text'); break;
+      case 'h1': insertLinePrefix('# '); break;
+      case 'h2': insertLinePrefix('## '); break;
+      case 'quote': insertLinePrefix('> '); break;
+      case 'code': wrapSelection('`','`','code'); break;
+      case 'codeblock': insertBlock('```\ncode here\n```\n'); break;
+      case 'link': wrapSelection('[','](https://example.com)','link text'); break;
+      case 'image': insertBlock('![alt text](image.png)\n'); break;
+      case 'ul': insertLinePrefix('- '); break;
+      case 'ol': insertLinePrefix('1. '); break;
+      case 'table': insertBlock('| Col A | Col B |\n| --- | --- |\n| val 1 | val 2 |\n'); break;
+      case 'hr': insertBlock('\n---\n'); break;
+      case 'mermaid': insertBlock('```mermaid\nflowchart TD\n  A --> B\n```\n'); break;
+    }
   });
 
 })();
