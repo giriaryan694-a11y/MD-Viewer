@@ -191,6 +191,32 @@
   .md li input[type=checkbox]{ margin-right:.5em; }
   .mermaid{ background:var(--bg-raised); border:1px solid var(--line); border-radius:8px; padding:16px; margin:1.2em 0; text-align:center; }
 
+  .mermaid-wrap{
+    position:relative; background:var(--bg-raised); border:1px solid var(--line); border-radius:8px;
+    margin:1.2em 0; overflow:hidden;
+  }
+  .mermaid-viewport{
+    overflow:auto; max-height:520px; cursor:grab; touch-action:none;
+  }
+  .mermaid-viewport.grabbing{ cursor:grabbing; }
+  .mermaid-inner{
+    display:inline-block; transform-origin:0 0; padding:16px;
+  }
+  .mermaid-inner svg{ max-width:none !important; }
+  .mermaid-controls{
+    position:absolute; top:8px; right:8px; display:flex; gap:4px; z-index:2;
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:6px; padding:3px;
+  }
+  .mermaid-controls button{
+    background:transparent; border:none; color:var(--ink); width:26px; height:26px; border-radius:4px;
+    cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:14px; line-height:1;
+  }
+  .mermaid-controls button:hover{ background:var(--accent); color:var(--bg); }
+  .mermaid-zoom-label{
+    position:absolute; bottom:8px; right:10px; font-family:'IBM Plex Mono',monospace; font-size:10.5px;
+    color:var(--ink-dim); background:var(--bg-panel); border:1px solid var(--line); border-radius:4px; padding:2px 6px; z-index:2;
+  }
+
   .media-view{ display:flex; flex-direction:column; align-items:center; gap:16px; padding:20px 0; }
   .media-view img, .media-view video{ max-width:100%; max-height:75vh; border-radius:8px; border:1px solid var(--line); }
   .media-view svg{ max-width:100%; max-height:75vh; }
@@ -457,7 +483,7 @@
   });
   const PURIFY_CFG = {
     ADD_TAGS:['video','source','audio','svg','path','circle','rect','line','polygon','polyline','g','defs','marker','text','tspan','ellipse','use','mermaid'],
-    ADD_ATTR:['controls','playsinline','viewBox','d','points','fill','stroke','stroke-width','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','transform','class','id','width','height','preserveAspectRatio','xmlns','markerWidth','markerHeight','orient','refX','refY']
+    ADD_ATTR:['controls','playsinline','viewBox','d','points','fill','stroke','stroke-width','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','transform','class','id','width','height','preserveAspectRatio','xmlns','markerWidth','markerHeight','orient','refX','refY','style','loading','title']
   };
 
   function renderMarkdownHTML(mdText){
@@ -475,20 +501,94 @@
     });
   }
 
-  function highlightAndDiagram(container){
+  async function highlightAndDiagram(container){
+    const mermaidBlocks = [];
     container.querySelectorAll('pre code').forEach(block=>{
       if(block.classList.contains('language-mermaid')){
-        const wrap = document.createElement('div');
-        wrap.className = 'mermaid';
-        wrap.textContent = block.textContent;
-        block.closest('pre').replaceWith(wrap);
+        mermaidBlocks.push(block);
       } else {
         hljs.highlightElement(block);
       }
     });
-    if(window.mermaid){
-      try{ mermaid.run({ querySelector: '.mermaid' }); }catch(e){ console.warn('mermaid render issue', e); }
+    for(const block of mermaidBlocks){
+      const code = block.textContent;
+      const pre = block.closest('pre');
+      const wrap = document.createElement('div');
+      wrap.className = 'mermaid-wrap';
+      pre.replaceWith(wrap);
+      if(!window.mermaid){ continue; }
+      try{
+        const id = 'mmd-' + Math.random().toString(36).slice(2,9);
+        const { svg } = await mermaid.render(id, code);
+        wrap.innerHTML =
+          `<div class="mermaid-controls">
+             <button data-zact="in" title="Zoom in">+</button>
+             <button data-zact="out" title="Zoom out">−</button>
+             <button data-zact="reset" title="Reset zoom">⤢</button>
+           </div>
+           <div class="mermaid-viewport"><div class="mermaid-inner">${svg}</div></div>
+           <span class="mermaid-zoom-label">100%</span>`;
+        setupDiagramZoomPan(wrap);
+      }catch(e){
+        wrap.innerHTML = `<div style="padding:14px;color:var(--danger);font-family:'IBM Plex Mono',monospace;font-size:12px;">Diagram error: ${escapeHtml(e.message||String(e))}</div>`;
+      }
     }
+  }
+
+  function setupDiagramZoomPan(wrap){
+    const viewport = wrap.querySelector('.mermaid-viewport');
+    const inner = wrap.querySelector('.mermaid-inner');
+    const label = wrap.querySelector('.mermaid-zoom-label');
+    const svgEl = inner.querySelector('svg');
+    if(!svgEl) return;
+
+    const rect = svgEl.getBoundingClientRect();
+    const baseW = rect.width || 300, baseH = rect.height || 150;
+    let scale = 1;
+
+    function applyScale(){
+      inner.style.width = (baseW*scale) + 'px';
+      inner.style.height = (baseH*scale) + 'px';
+      svgEl.style.width = (baseW*scale) + 'px';
+      svgEl.style.height = (baseH*scale) + 'px';
+      label.textContent = Math.round(scale*100) + '%';
+    }
+    applyScale();
+
+    wrap.querySelectorAll('.mermaid-controls button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(btn.dataset.zact==='in') scale = Math.min(4, scale*1.25);
+        else if(btn.dataset.zact==='out') scale = Math.max(0.25, scale/1.25);
+        else scale = 1;
+        applyScale();
+      });
+    });
+
+    // ctrl/cmd + wheel to zoom; plain wheel scrolls the diagram (up/down & side to side)
+    viewport.addEventListener('wheel', e=>{
+      if(e.ctrlKey || e.metaKey){
+        e.preventDefault();
+        scale = e.deltaY < 0 ? Math.min(4, scale*1.1) : Math.max(0.25, scale/1.1);
+        applyScale();
+      }
+    }, { passive:false });
+
+    // drag to pan
+    let dragging=false, startX=0, startY=0, startLeft=0, startTop=0;
+    viewport.addEventListener('pointerdown', e=>{
+      dragging = true; viewport.classList.add('grabbing');
+      startX=e.clientX; startY=e.clientY;
+      startLeft=viewport.scrollLeft; startTop=viewport.scrollTop;
+      viewport.setPointerCapture(e.pointerId);
+    });
+    viewport.addEventListener('pointermove', e=>{
+      if(!dragging) return;
+      viewport.scrollLeft = startLeft - (e.clientX-startX);
+      viewport.scrollTop = startTop - (e.clientY-startY);
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+      viewport.addEventListener(ev, ()=>{ dragging=false; viewport.classList.remove('grabbing'); });
+    });
   }
 
   let currentRenderFn = null;
